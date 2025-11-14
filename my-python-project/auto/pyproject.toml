@@ -1,0 +1,10 @@
+[project]
+name = "my-python-project"
+version = "0.1.0"
+description = "Order book demo service"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["fastapi", "uvicorn[standard]", "pydantic", "SQLAlchemy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

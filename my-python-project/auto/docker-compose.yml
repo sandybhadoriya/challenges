@@ -1,0 +1,36 @@
+version: '3.9'
+
+services:
+  orderbook:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+      - "9999:9999"
+    environment:
+      - ENVIRONMENT=dev
+      - LOG_LEVEL=info
+      - DB_PATH=sqlite:////app/data/orderbook.db
+      - MAX_WORKERS=4
+      - ENABLE_METRICS=true
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: orderbook
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
