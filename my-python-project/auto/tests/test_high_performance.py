@@ -2,14 +2,14 @@
 
 import pytest
 import time
-from my_package.orderbook import FastOrderBook
+from my_package.orderbook import OrderBook
 
 class TestHighPerformance:
     """Test 50k+ msg/sec throughput"""
     
     def test_50k_messages_per_second(self):
         """Verify can process 50k messages in 1 second"""
-        order_book = FastOrderBook()
+        order_book = OrderBook()
         
         # Generate 50k messages
         messages = []

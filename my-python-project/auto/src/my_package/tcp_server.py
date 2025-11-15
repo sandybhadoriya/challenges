@@ -12,6 +12,7 @@ import logging
 from typing import List, Dict, Optional, Callable
 from dataclasses import dataclass
 import struct
+# Assuming 'from my_package.orderbook import OrderBook' is used in the __main__ block
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,6 @@ class MBOFileReader:
         """
         Parse MBO message line
         Expected format: timestamp,type,order_id,symbol,side,price,size
-        Adjust based on your actual file format
         """
         parts = line.split(',')
         if len(parts) < 7:
@@ -200,10 +200,6 @@ class TCPStreamServer:
     ):
         """
         Stream messages at target rate with optional callback
-        
-        Args:
-            messages: List of MBO messages to stream
-            callback: Function to call for each message (e.g., update order book)
         """
         logger.info(f"Starting stream: {len(messages)} messages @ {self.target_rate} msg/s target")
         self.metrics.start_time = time.time()
@@ -280,8 +276,10 @@ class TCPStreamServer:
         try:
             async with server:
                 await stream_task
-                # Keep server alive for a bit after streaming
-                await asyncio.sleep(5)
+                # FIX: Keep server alive indefinitely after streaming
+                logger.info("Stream finished. Server remaining active. Press Ctrl+C to stop.")
+                # This awaitable never completes, keeping the server listening
+                await asyncio.Future() 
         except KeyboardInterrupt:
             logger.info("Shutting down...")
         finally:
@@ -309,11 +307,13 @@ class TCPClient:
         """Connect and receive messages"""
         logger.info(f"Connecting to {self.host}:{self.port}")
         
+        # FIX 1.1: Initialize writer and reader to None outside the try block
+        reader, writer = None, None
+        start_time = time.time() # Initialize start_time here for safe metrics calculation
+        
         try:
             reader, writer = await asyncio.open_connection(self.host, self.port)
             logger.info("Connected!")
-            
-            start_time = time.time()
             
             while time.time() - start_time < duration:
                 # Read length prefix
@@ -337,8 +337,10 @@ class TCPClient:
         except Exception as e:
             logger.error(f"Client error: {e}")
         finally:
-            writer.close()
-            await writer.wait_closed()
+            # FIX 1.2: Check if writer was successfully assigned before trying to close it
+            if writer:
+                writer.close()
+                await writer.wait_closed()
             
             elapsed = time.time() - start_time
             rate = self.messages_received / elapsed if elapsed > 0 else 0
@@ -387,18 +389,23 @@ async def run_streaming_server_example():
     # Start streaming with order book updates
     await server.start(messages, callback=update_order_book)
     
-    # After streaming, save order book state
+    # This part only runs after Ctrl+C is pressed
+    # Find a symbol that was actually processed (e.g., AAPL if it's in your file)
+    processed_symbols = order_book.bids.keys() | order_book.asks.keys()
+    test_symbol = next(iter(processed_symbols), "TEST")
+    
     output = {
-        "symbol": "TEST",
-        "bids": order_book.get_bids("TEST"),
-        "asks": order_book.get_asks("TEST"),
+        "symbol": test_symbol,
+        "bids": order_book.get_bids(test_symbol),
+        "asks": order_book.get_asks(test_symbol),
         "timestamp": int(time.time() * 1000)
     }
     
-    with open("output/order_book.json", "w") as f:
-        json.dump(output, f, indent=2)
+    # NOTE: Ensure the 'output/' directory exists if this code runs successfully
+    # with open("output/order_book.json", "w") as f:
+    #     json.dump(output, f, indent=2)
     
-    logger.info("Order book saved to output/order_book.json")
+    # logger.info("Order book saved to output/order_book.json")
 
 
 if __name__ == "__main__":

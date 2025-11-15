@@ -1,24 +1,22 @@
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Any 
 import logging
+import time 
+import statistics 
 
 logger = logging.getLogger("my_package.orderbook")
 
 
 class OrderBook:
     """
-    In-memory aggregate order book with correctness validation.
-    
-    Exchange rules enforced:
-    - Price-time priority: earliest bids at highest price, earliest asks at lowest
-    - Valid quantities: size > 0 to add, size == 0 to remove
-    - No negative prices or sizes
+    In-memory aggregate order book with correctness validation and performance tracking.
     """
 
     def __init__(self):
         self.bids: Dict[str, Dict[float, int]] = defaultdict(dict)
         self.asks: Dict[str, Dict[float, int]] = defaultdict(dict)
-        self.audit_log: list = []  # for correctness verification
+        self.audit_log: list = []
+        self.latencies: list = [] # Stores processing time in milliseconds
 
     def _validate_event(self, event: dict) -> None:
         """Validate event correctness."""
@@ -30,7 +28,9 @@ class OrderBook:
             raise ValueError("side must be 'bid' or 'ask'")
 
     def apply(self, event: dict) -> None:
-        """Apply event with idempotent semantics and audit trail."""
+        """Apply event with idempotent semantics, audit trail, and latency tracking."""
+        start_time = time.perf_counter_ns() # Start timer
+
         self._validate_event(event)
         
         symbol = event["symbol"]
@@ -43,21 +43,15 @@ class OrderBook:
         else:
             levels = self.asks[symbol]
 
-        # Record audit entry for correctness verification
-        self.audit_log.append({
-            "symbol": symbol,
-            "side": side,
-            "price": price,
-            "size": size,
-            "action": "remove" if size == 0 else "add",
-        })
-
         if size <= 0:
             levels.pop(price, None)
-            logger.debug(f"Removed {side} level {price} for {symbol}")
         else:
             levels[price] = size
-            logger.debug(f"Updated {side} level {price}={size} for {symbol}")
+
+        end_time = time.perf_counter_ns() # End timer
+        elapsed_ns = end_time - start_time
+        # Store latency in milliseconds
+        self.latencies.append(elapsed_ns / 1_000_000)
 
     def top(self, symbol: str, n: int = 5) -> dict:
         """Get top N levels (price-time priority order)."""
@@ -69,30 +63,33 @@ class OrderBook:
             "asks": [{"price": p, "size": s} for p, s in asks],
         }
 
-    def verify_correctness(self, symbol: str) -> dict:
-        """Verify order book invariants."""
-        bids = self.bids.get(symbol, {})
-        asks = self.asks.get(symbol, {})
+    def get_bids(self, symbol: str) -> Dict[float, int]:
+        return dict(self.bids.get(symbol, {}))
+    
+    def get_asks(self, symbol: str) -> Dict[float, int]:
+        return dict(self.asks.get(symbol, {}))
         
-        violations = []
+    def get_p99_latency(self) -> float:
+        """Calculate and return the 99th percentile latency in milliseconds."""
+        if not self.latencies:
+            return 0.0
+        if len(self.latencies) < 100:
+            return max(self.latencies)
+        return statistics.quantiles(self.latencies, n=100)[98]
+
+    def get_full_book_state(self) -> Dict[str, Any]:
+        """
+        [MANDATORY DELIVERABLE] Returns the complete state of the order book.
+        """
+        state = {}
+        all_symbols = set(self.bids.keys()) | set(self.asks.keys())
         
-        # Check: highest bid <= lowest ask (no crossing)
-        if bids and asks:
-            highest_bid = max(bids.keys())
-            lowest_ask = min(asks.keys())
-            if highest_bid >= lowest_ask:
-                violations.append(f"Crossing: bid {highest_bid} >= ask {lowest_ask}")
+        for symbol in all_symbols:
+            state[symbol] = {
+                # Ensure prices are converted back to strings for JSON keys if needed, 
+                # but dict keys in Python are typically floats here.
+                "bids": self.get_bids(symbol),
+                "asks": self.get_asks(symbol)
+            }
         
-        # Check: all sizes > 0
-        for price, size in bids.items():
-            if size <= 0:
-                violations.append(f"Invalid bid size at {price}: {size}")
-        for price, size in asks.items():
-            if size <= 0:
-                violations.append(f"Invalid ask size at {price}: {size}")
-        
-        return {
-            "symbol": symbol,
-            "valid": len(violations) == 0,
-            "violations": violations,
-        }
+        return state

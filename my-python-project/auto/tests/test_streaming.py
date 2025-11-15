@@ -258,9 +258,18 @@ class TestIntegrationWithOrderBook:
         bids = order_book.get_bids("TEST")
         asks = order_book.get_asks("TEST")
         
-        assert len(bids) > 0
-        assert len(asks) > 0
-        assert bids[0]["price"] == 100.0  # Best bid
+        assert len(bids) == 2
+        assert len(asks) == 1
+        
+        # Corrected Logic: access the best bid price by finding the maximum key in the dictionary
+        best_bid_price = max(bids.keys())
+        assert best_bid_price == 100.0  # Best bid price
+        assert bids[best_bid_price] == 10 # Best bid size
+        
+        # Corrected Logic: access the best ask price by finding the minimum key in the dictionary
+        best_ask_price = min(asks.keys())
+        assert best_ask_price == 101.0 # Best ask price
+        assert asks[best_ask_price] == 20 # Best ask size
 
 
 class TestPerformance:

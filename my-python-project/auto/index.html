@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batonics Live Order Book</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f8f8f8; }
+        .book-container { display: flex; width: 80%; max-width: 1200px; margin-top: 20px; }
+        .side { flex: 1; margin: 0 10px; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        #bids { background-color: #e6ffe6; border-left: 5px solid #00b300; }
+        #asks { background-color: #ffe6e6; border-right: 5px solid #ff0000; }
+        h2 { text-align: center; margin-bottom: 15px; }
+        .level { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #ccc; font-family: 'Courier New', monospace; font-size: 1.1em; }
+        .price { font-weight: bold; }
+        .bid-price { color: #00b300; }
+        .ask-price { color: #ff0000; }
+        #metrics { margin-top: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; background-color: #fff; width: 80%; max-width: 1200px; text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>Live Order Book: <span id="symbol-display">AAPL</span></h1>
+
+    <div id="metrics">Loading Metrics...</div>
+
+    <div class="book-container">
+        <div class="side" id="bids">
+            <h2>Bids (Buy)</h2>
+        </div>
+        <div class="side" id="asks">
+            <h2>Asks (Sell)</h2>
+        </div>
+    </div>
+
+    <script>
+        const API_HOST = 'http://localhost:8000';
+        const SYMBOL = 'AAPL'; // ⚠️ Ensure this symbol is in your MBO data
+        const DEPTH = 10;
+
+        const BOOK_URL = `${API_HOST}/api/v1/book/${SYMBOL}?depth=${DEPTH}`;
+        const METRICS_URL = `${API_HOST}/api/v1/metrics`;
+        
+        document.getElementById('symbol-display').textContent = SYMBOL;
+
+        async function fetchAndUpdateBook() {
+            try {
+                const response = await fetch(BOOK_URL);
+                const data = await response.json();
+
+                if (response.status === 404) throw new Error(data.detail);
+
+                renderBook(data.bids.sort((a, b) => b.price - a.price), 'bids', 'bid-price');
+                renderBook(data.asks.sort((a, b) => a.price - b.price), 'asks', 'ask-price');
+            } catch (error) {
+                console.error("Error fetching order book:", error);
+                document.getElementById('bids').innerHTML = '<h2>Bids (Buy)</h2><p style="color: red;">Error/Symbol Not Found</p>';
+                document.getElementById('asks').innerHTML = '<h2>Asks (Sell)</h2><p style="color: red;">Error/Symbol Not Found</p>';
+            }
+        }
+
+        async function fetchAndUpdateMetrics() {
+             try {
+                const response = await fetch(METRICS_URL);
+                if (!response.ok) throw new Error('Metrics request failed');
+                const data = await response.json();
+
+                const metricsDiv = document.getElementById('metrics');
+                metricsDiv.innerHTML = `
+                    **Metrics** | 
+                    **Latency (p99):** ${data.p99_latency_ms.toFixed(3)} ms |
+                    **Processed:** ${data.messages_processed.toLocaleString()} msgs |
+                    **Symbols:** ${data.book_symbols}
+                `;
+
+            } catch (error) {
+                console.error("Error fetching metrics:", error);
+            }
+        }
+
+        function renderBook(levels, containerId, priceClass) {
+            const container = document.getElementById(containerId);
+            const isBid = containerId === 'bids';
+            container.innerHTML = `<h2>${isBid ? 'Bids (Buy)' : 'Asks (Sell)'}</h2>`; 
+
+            levels.forEach(level => {
+                const levelDiv = document.createElement('div');
+                levelDiv.className = 'level';
+                
+                const sizeSpan = document.createElement('span');
+                sizeSpan.textContent = level.size.toLocaleString();
+
+                const priceSpan = document.createElement('span');
+                priceSpan.className = `price ${priceClass}`;
+                priceSpan.textContent = level.price.toFixed(4);
+
+                if (isBid) {
+                    levelDiv.appendChild(sizeSpan);
+                    levelDiv.appendChild(priceSpan);
+                } else {
+                    levelDiv.appendChild(priceSpan);
+                    levelDiv.appendChild(sizeSpan);
+                }
+                container.appendChild(levelDiv);
+            });
+        }
+
+        fetchAndUpdateBook();
+        fetchAndUpdateMetrics();
+        setInterval(fetchAndUpdateBook, 500);
+        setInterval(fetchAndUpdateMetrics, 5000);
+    </script>
+</body>
+</html>
