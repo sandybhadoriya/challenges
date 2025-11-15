@@ -3,12 +3,15 @@ import json
 import time
 import os
 import logging
+# Assuming my_package is accessible via PYTHONPATH=$PYTHONPATH:./src
 from my_package.orderbook import OrderBook
-from my_package.tcp_server import MBOFileReader
+from my_package.tcp_server import MBOFileReader # Reuses the MBO reader logic
 
 # --- Configuration ---
 MBO_FILE_PATH = "data/mbo_data.csv"
-OUTPUT_FILENAME = f"reconstructed_orderbook_{int(time.time())}.json"
+OUTPUT_DIR = "output"
+os.makedirs(OUTPUT_DIR, exist_ok=True) # Ensure the output directory exists
+OUTPUT_FILENAME = f"{OUTPUT_DIR}/reconstructed_orderbook_{int(time.time())}.json"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
@@ -20,7 +23,12 @@ def run_reconstruction_and_save():
         return
 
     reader = MBOFileReader(MBO_FILE_PATH)
-    messages = reader.load()
+    try:
+        messages = reader.load()
+    except Exception as e:
+        logging.error(f"Failed to load MBO data: {e}")
+        return
+        
     logging.info(f"Loaded {len(messages)} messages.")
     
     order_book = OrderBook()
@@ -29,11 +37,12 @@ def run_reconstruction_and_save():
     
     for i, msg in enumerate(messages):
         try:
+            # Note: order_book.apply expects a dictionary compatible with MBOFileReader's output
             order_book.apply(msg) 
             if (i + 1) % 100000 == 0:
                 logging.info(f"Processed {i + 1} messages...")
         except Exception as e:
-            logging.warning(f"Skipping message {i}: {e}")
+            logging.warning(f"Skipping message {i} ({msg.get('symbol', 'N/A')}): {e}")
             
     elapsed_time = time.time() - start_time
     throughput = len(messages) / elapsed_time if elapsed_time > 0 else 0
